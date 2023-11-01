@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -12,8 +13,10 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
+	"github.com/quic-go/quic-go/logging"
 	"github.com/quic-go/webtransport-go"
 
+	"github.com/quic-go/quic-go/qlog"
 	"github.com/someview/transport-benchmark/testdata"
 )
 
@@ -24,14 +27,25 @@ type MyHandler struct {
 var wsServer *webtransport.Server
 
 func init() {
+	quicConf := &quic.Config{
+		Allow0RTT:            true,
+		HandshakeIdleTimeout: time.Second * 120,
+		MaxIncomingStreams:   1 << 20, // 40万个incoming
+		Tracer: func(ctx context.Context, p logging.Perspective, connID quic.ConnectionID) 
+		*logging.ConnectionTracer {
+			
+		},
+	}
+
 	wsServer = &webtransport.Server{
 		H3: http3.Server{
 			Handler: &MyHandler{},
 			Addr:    "localhost:4242",
 			// Port:       4242,
-			QuicConfig: &quic.Config{Allow0RTT: true},
+			QuicConfig: quicConf,
 			// TLSConfig:  &tls.Config{InsecureSkipVerify: true}
 		},
+		StreamReorderingTimeout: time.Second * 60,
 	}
 }
 

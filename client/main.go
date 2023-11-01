@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 
@@ -18,7 +19,7 @@ import (
 
 var sendCount = int64(0)
 var recvCount = int64(0)
-var maxClientNum = 1e2
+var maxClientNum = 1e4
 
 var multiMode = 0  // 大量客户端，均发送消息
 var singleMode = 1 // 大量客户端，只有一个客户端在发送消息
@@ -33,14 +34,21 @@ func RunClient(runMode int) {
 	testdata.AddRootCA(pool)
 
 	var d = &webtransport.Dialer{
+		StreamReorderingTimeout: time.Second * 20,
 		RoundTripper: &http3.RoundTripper{
 			TLSClientConfig: &tls.Config{
 				RootCAs:            pool,
 				InsecureSkipVerify: true,
 			},
+			QuicConfig: &quic.Config{
+				HandshakeIdleTimeout: time.Minute,
+				MaxIdleTimeout:       time.Hour,
+				MaxIncomingStreams:   1 << 20,
+				Allow0RTT:            true,
+			},
 		},
 	}
-	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*5)
+	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*60)
 	defer cancel()
 	_, conn, err := d.Dial(ctx, "https://localhost:4242/", nil)
 	if err != nil {
@@ -70,7 +78,8 @@ func RunClient(runMode int) {
 
 	go func() {
 		for {
-			write, err := stream.Write([]byte("hello"))
+			// size is the same as application protocol on tcp
+			write, err := stream.Write([]byte("hello 123456789"))
 			if err != nil {
 				fmt.Println("send err:", write)
 				_ = stream.Close()
