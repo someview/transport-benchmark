@@ -13,12 +13,29 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
-	"github.com/quic-go/quic-go/logging"
 	"github.com/quic-go/webtransport-go"
-
-	"github.com/quic-go/quic-go/qlog"
 	"github.com/someview/transport-benchmark/testdata"
 )
+
+type bufferedWriteCloser struct {
+	*bufio.Writer
+	io.Closer
+}
+
+// NewBufferedWriteCloser creates an io.WriteCloser from a bufio.Writer and an io.Closer
+func NewBufferedWriteCloser(writer *bufio.Writer, closer io.Closer) io.WriteCloser {
+	return &bufferedWriteCloser{
+		Writer: writer,
+		Closer: closer,
+	}
+}
+
+func (h bufferedWriteCloser) Close() error {
+	if err := h.Writer.Flush(); err != nil {
+		return err
+	}
+	return h.Closer.Close()
+}
 
 type MyHandler struct {
 	activeCount int64
@@ -27,14 +44,20 @@ type MyHandler struct {
 var wsServer *webtransport.Server
 
 func init() {
+	// filename := "server.qlog"
+	// f, err := os.Create(filename)
+	// if err != nil {
+	// 	log.Fatalln("create log file err:", err)
+	// }
+	// wc := bufio.NewWriter(f)
 	quicConf := &quic.Config{
 		Allow0RTT:            true,
 		HandshakeIdleTimeout: time.Second * 120,
 		MaxIncomingStreams:   1 << 20, // 40万个incoming
-		Tracer: func(ctx context.Context, p logging.Perspective, connID quic.ConnectionID) 
-		*logging.ConnectionTracer {
-			
-		},
+		// Tracer: func(ctx context.Context, p logging.Perspective,
+		// 	ci quic.ConnectionID) *logging.ConnectionTracer {
+		// 	return qlog.NewConnectionTracer(NewBufferedWriteCloser(wc, f), p, ci)
+		// },
 	}
 
 	wsServer = &webtransport.Server{
