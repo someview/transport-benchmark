@@ -101,6 +101,7 @@ func ReportView() {
 }
 
 func main() {
+	fmt.Println("开始时间:", time.Now())
 	var mode = flag.Int("mode", 0, "运行模式")
 	flag.Parse()
 	switch *mode {
