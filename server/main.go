@@ -43,28 +43,30 @@ func (h *MyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	atomic.AddInt64(&h.activeCount, 1)
-	fmt.Println("server recv webtransport conn:", h.activeCount) // 最终的活跃连接数
+	fmt.Println("server recv webtransport conn:", h.activeCount, "routines:", runtime.NumGoroutine()) // 最终的活跃连接数
 	// Handle the connection. Here goes the application logic.
 	go func() {
 		for {
 			stream, err := conn.AcceptStream(context.Background())
 			if err != nil {
 				fmt.Println("server read err:", err)
+				_ = conn.CloseWithError(webtransport.SessionErrorCode(405), "read error")
 				return
 			}
 			if _, err := io.Copy(stream, stream); err != nil {
-				fmt.Println("server write err:", err)
+				fmt.Println("send err:", err)
+				_ = conn.CloseWithError(webtransport.SessionErrorCode(406), "write error")
+				return
 			}
 		}
 	}()
 }
 
 func RunServer() {
-	log.Println("hello world:", wsServer.ListenAndServeTLS(testdata.GetCertificatePaths()))
+	log.Println("run ws server:", wsServer.ListenAndServeTLS(testdata.GetCertificatePaths()))
 }
 
 func main() {
-	// 设置最大核心数量为2
 	runtime.GOMAXPROCS(2)
 	go RunServer()
 	time.Sleep(time.Minute * 30)

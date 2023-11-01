@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"sync/atomic"
 	"time"
 
 	"github.com/quic-go/quic-go/http3"
@@ -15,8 +16,9 @@ import (
 	"github.com/someview/transport-benchmark/testdata"
 )
 
-var sendCount = 0
-var recvCount = 0
+var sendCount = int64(0)
+var recvCount = int64(0)
+var maxClientNum = 1e2
 
 var multiMode = 0  // 大量客户端，均发送消息
 var singleMode = 1 // 大量客户端，只有一个客户端在发送消息
@@ -41,7 +43,6 @@ func RunClient(runMode int) {
 	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*5)
 	defer cancel()
 	_, conn, err := d.Dial(ctx, "https://localhost:4242/", nil)
-	// overUDP
 	if err != nil {
 		log.Fatalln("dial err:", err)
 	}
@@ -55,14 +56,15 @@ func RunClient(runMode int) {
 	}
 
 	go func() {
-		maxData := make([]byte, 4096)
+		maxData := make([]byte, 10)
 		for {
 			_, err := stream.Read(maxData)
 			if err != nil {
 				_ = stream.Close()
+				fmt.Println("recv err:", err)
 				return
 			}
-
+			atomic.AddInt64(&recvCount, 1)
 		}
 	}()
 
@@ -71,15 +73,21 @@ func RunClient(runMode int) {
 			write, err := stream.Write([]byte("hello"))
 			if err != nil {
 				fmt.Println("send err:", write)
+				_ = stream.Close()
 				return
 			}
+			atomic.AddInt64(&sendCount, 1)
 		}
 	}()
 }
 
 func ReportView() {
 	for range time.NewTicker(time.Second * 20).C {
-		fmt.Println("时间:", time.Now(), "发送消息数量:", sendCount, "recvCount:", recvCount)
+		send := atomic.LoadInt64(&sendCount)
+		recv := atomic.LoadInt64(&recvCount)
+		fmt.Println("时间:", time.Now(), "send:", send, "recv:", recv, "rate:", (send+recv)/20)
+		atomic.StoreInt64(&sendCount, 0)
+		atomic.StoreInt64(&recvCount, 0)
 	}
 }
 
@@ -88,18 +96,19 @@ func main() {
 	flag.Parse()
 	switch *mode {
 	case slientMode:
-		for i := 0; i < 1e4; i++ {
+		for i := 0; i < int(maxClientNum); i++ {
 			go RunClient(slientMode)
 		}
 	case singleMode:
-		for i := 0; i < 1e4-1; i++ {
+		for i := 0; i < int(maxClientNum)-1; i++ {
 			go RunClient(slientMode)
 		}
 		go RunClient(multiMode)
 	case multiMode:
-		for i := 0; i < 1e4; i++ {
+		for i := 0; i < int(maxClientNum); i++ {
 			go RunClient(multiMode)
 		}
 	}
 	go ReportView()
+	time.Sleep(time.Minute * 30)
 }
